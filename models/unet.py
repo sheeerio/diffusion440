@@ -40,3 +40,48 @@ class ResBlock(nn.Module):
         h = self.act(self.norm2(h ,time_em))
         h = self.conv2(self.dropout(h))
         return h + residual
+
+class Downsample(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, 3, stride=2, padding=1)
+    
+    def forward(self, x):
+        return self.conv(x)
+
+class Upsample(nn.Moduel):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, 3, padding=1)
+    
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor=2, mode="nearest")
+        return self.conv(x)
+
+
+class SelfAttention2d(nn.Module):
+    def __init__(self, channels, num_heads=4, num_groups=32):
+        super().__init__()
+        self.num_heads = num_heads
+        self.norm = nn.GroupNorm(min(num_groups, channels), channels)
+        self.qkv = nn.Conv2d(channels, channels * 3, 1)
+        self.proj_out = nn.Conv2d(channels, channels, 1)
+        self.scale = (channels // num_heads) ** -0.5
+    
+    def forward(self, x):
+        B,C,H,W = x.shape
+        residual = x 
+        x = self.norm(x)
+        qkv = self.qkv(x).reshape(B, 3, self.num_heads, C // self.num_heads, H * W)
+        q, k, v = qkv[:, 0], qkv[:, 1], qkv[:, 2] # B,heads,C//heads,HW
+        q = q.permute(0, 1, 3, 2) # B,heads,HW,C//heads
+        k = k # B,heads,C//heads,HW
+        v = v.permute(0, 1, 3, 2) # B,heads,HW,C//heads
+
+        attn = torch.matmul(q, k) * self.scale # B,heads,HW,HW
+        attn = F.softmax(attn, dim=-1)
+        out = torch.matmul(attn, v) # B,heads,HW,C//heads
+        out = out.permute(0, 1, 3, 2).reshape(B, C, H, W)
+        out = self.proj_out(out)
+        
+        return out + residual
