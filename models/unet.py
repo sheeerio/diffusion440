@@ -49,7 +49,7 @@ class Downsample(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-class Upsample(nn.Moduel):
+class Upsample(nn.Module):
     def __init__(self, channels):
         super().__init__()
         self.conv = nn.Conv2d(channels, channels, 3, padding=1)
